@@ -1,6 +1,6 @@
 # Clases de hallazgo y de desvío (ADR-006 D4 del kit). Fuente única de las clases: este repo (D2).
 # Un id estable y una línea cada una. `other` está reservada: no se lista acá, review-pr la usa cuando ninguna clase calza.
-# La copia del kit (docs/agents/classes.yml) es provisional hasta la fase 2; desde ahí la genera `sync-rules`.
+# La copia del kit (docs/agents/classes.yml) la genera `sync-rules` desde este archivo: no se edita allá.
 - id: pr-metadata
   description: the PR body, title, number or red block says something that is not true of this PR
 - id: ci-claim
