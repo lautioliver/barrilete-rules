@@ -29,7 +29,7 @@ def correr(files, timeout=None):
         for rel, txt in files.items():
             p = root / rel
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(txt, encoding="utf-8", newline="")  # newline="": un \r del caso llega tal cual al archivo
+            p.write_text(txt, encoding="utf-8")
         r = subprocess.run([sys.executable, str(VALIDATE), d], capture_output=True, text=True, timeout=timeout)
         return r.returncode, r.stdout + r.stderr
 
@@ -228,9 +228,10 @@ class Validador(unittest.TestCase):
 
     def test_deviations_clave_mal_escrita(self):
         for clave in ("  Deviations:", "  DEVIATIONS:", "  deviations :", "- deviations:", "  - deviations:",
-                      '  "deviations":', "  'deviations':"):
+                      '  "deviations":', "  'deviations':", "  deviations", "  deviations=", " deviations", "deviations"):
             with self.subTest(clave):
                 self.rechaza_una(dev(clave + " [attribution]"), self.INESPERADA)
+        self.rechaza_una(dev("  deviations"), self.INESPERADA)
 
     def test_deviations_espacio_que_no_es_espacio_dentro_de_la_lista(self):
         for lista in ("[attribution\t]", "[\u00a0attribution]", "[attribution,\u3000interrupt]"):
@@ -238,7 +239,7 @@ class Validador(unittest.TestCase):
                 self.rechaza_una(dev(f"  deviations: {lista}"), self.NO_SLUG)
 
     def test_deviations_con_algo_despues_de_la_lista(self):
-        for cola in (" # nota", " # nota]", " x", "\t", "\u00a0", "\u3000", "\x0c", "\r\r"):
+        for cola in (" # nota", " # nota]", " x", "\t", "\u00a0", "\u3000", "\x0c"):
             with self.subTest(cola):
                 self.rechaza_una(dev("  deviations: [attribution]" + cola), self.EN_LINEA)
 
@@ -247,12 +248,24 @@ class Validador(unittest.TestCase):
             with self.subTest(lista):
                 self.rechaza_una(dev(f"  deviations: {lista}"), self.EN_LINEA)
 
+    def test_deviations_con_un_comentario_adentro(self):
+        for lista in ("[attribution # nota]", "[attribution, #interrupt]", "[#]"):
+            with self.subTest(lista):
+                self.rechaza_una(dev(f"  deviations: {lista}"), self.EN_LINEA)
+
     def test_deviations_detras_de_un_corte_que_no_es_salto_de_linea(self):
         # El lector del kit corta las líneas donde corta str.splitlines(): ve la lista como una línea aparte y la revisa.
-        for corte in ("\r", "\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"):
-            with self.subTest(corte):
-                c = CLASES.replace("  description: x\n", f"  description: x{corte}  deviations: [1st-try]\n")
-                self.rechaza_una(base(**{"classes.yml": c}), self.INESPERADA)
+        for corte in ("\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"):
+            for lista in ("[1st-try]", "[attribution]"):
+                with self.subTest(corte=corte, lista=lista):
+                    c = CLASES.replace("  description: x\n", f"  description: x{corte}  deviations: {lista}\n")
+                    self.rechaza_una(base(**{"classes.yml": c}), self.INESPERADA)
+
+    def test_deviations_detras_de_un_retorno_de_carro_es_otra_linea(self):
+        # Un \r suelto sí corta la línea, acá y en el kit (los dos leen el archivo en modo texto): la lista se revisa como tal.
+        c = CLASES.replace("  description: x\n", "  description: x\r  deviations: [1st-try]\n")
+        self.rechaza_una(base(**{"classes.yml": c}), f"classes.yml:3: el tipo de desvío '1st-try' {self.NO_SLUG}")
+        self.pasa(base(**{"classes.yml": c.replace("1st-try", "attribution")}))
 
     def test_deviations_formas_validas_pasan(self):
         for linea in ("  deviations: []", "  deviations: [ ]", "  deviations: [attribution,interrupt]",
@@ -302,7 +315,7 @@ class Validador(unittest.TestCase):
 
     def test_lineas_hostiles_no_cuelgan(self):
         n = 200000
-        for nombre, linea in (("cortes", "\r" * n), ("espacios tras la clave", "  deviations:" + " " * n),
+        for nombre, linea in (("cortes", "\x0c" * n), ("cortes unicode", "\u2028" * n), ("espacios tras la clave", "  deviations:" + " " * n),
                               ("espacios antes de la clave", " " * n + "deviations"), ("guiones", "- " * n + "deviations:"),
                               ("comas", "  deviations: [" + "," * n + "x"), ("tipo largo", "  deviations: [" + "a-" * n + "]"),
                               ("corchetes", "  deviations: " + "[" * n), ("claves", "\x0cdeviations" * (n // 10))):

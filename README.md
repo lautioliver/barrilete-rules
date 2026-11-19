@@ -5,7 +5,7 @@ Las reglas que siguen los agentes de Barrilete, una por archivo. Es el almacén 
 ## Qué hay
 
 - `rules/<id>.md`: una regla por archivo.
-- `classes.yml`: las clases de hallazgo y de desvío. Este repo es su única fuente. Cada clase puede llevar `deviations: [<tipo>, …]`, los tipos de desvío de `bk learn` que cuentan para ella al medir una regla ([ADR-007 D5 del kit](https://github.com/lautioliver/barrilete-kit/blob/main/docs/decisions/kit/ADR-007-per-project-learning.md)); un tipo va en una sola clase como máximo, y uno sin clase no se mide.
+- `classes.yml`: las clases de hallazgo y de desvío. Este repo es su única fuente. Cada clase puede llevar `deviations: [<tipo>, …]`, los tipos de desvío de `bk learn` que cuentan para ella al medir una regla ([ADR-007 D5 del kit](https://github.com/lautioliver/barrilete-kit/blob/main/docs/decisions/kit/ADR-007-per-project-learning.md)); un tipo va en una sola clase como máximo, y uno sin clase no se mide. La línea se escribe exactamente `  deviations: [<tipo>, …]`: dos espacios de indentación, un espacio después de `:` y una lista en línea, sin comentario ni coma de más. Un tipo es un slug que empieza con una letra y no es una palabra que YAML 1.1 lee como booleano o null (`y`, `n`, `yes`, `no`, `true`, `false`, `on`, `off`, `null`). Es el criterio del lector del kit (`scripts/agents/check-docs.py`), que recibe el archivo tal cual por `sync-rules`.
 - `scripts/validate.py`: el validador que corre el CI.
 
 No hay `checks/`: los checks se implementan en el kit (`scripts/agents/checks/<id>`); una regla solo declara `check: <id>` y su `fail_message`. Tampoco hay desvíos: quedan en el store de cada proyecto y nunca entran a este repo; acá solo está el nombre de su tipo, en `deviations`.

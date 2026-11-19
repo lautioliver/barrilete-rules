@@ -1,6 +1,7 @@
 # Clases de hallazgo y de desvío (ADR-006 D4 del kit). Fuente única de las clases: este repo (D2).
 # Un id estable y una línea cada una. `deviations` (opcional): los tipos de desvío de `bk learn` que cuentan para la clase
 # (ADR-007 D5 del kit); un tipo va en una sola clase, y uno sin clase se guarda pero no se mide.
+# Se escribe exactamente `  deviations: [<tipo>, …]` (dos espacios, un espacio después de `:`); un tipo es un slug que empieza con una letra.
 # `other` está reservada: no se lista acá, review-pr la usa cuando ninguna clase calza.
 # La copia del kit (docs/agents/classes.yml) la genera `sync-rules` desde este archivo: no se edita allá.
 - id: pr-metadata
