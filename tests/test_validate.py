@@ -145,6 +145,36 @@ class Validador(unittest.TestCase):
     def test_clase_repetida(self):
         self.rechaza(base(**{"classes.yml": CLASES + "- id: stale-docs\n"}), "está repetida")
 
+    # La lista `deviations` de una clase (ADR-007 D5 del kit): los tipos de desvío que le corresponden.
+    def test_deviations_valido_pasa(self):
+        c = CLASES.replace("  description: x\n", "  description: x\n  deviations: [attribution, user-correction]\n")
+        rc, out = correr(base(**{"classes.yml": c}))
+        self.assertEqual(rc, 0, out)
+
+    def test_deviation_no_es_slug(self):
+        c = CLASES.replace("  description: x\n", "  description: x\n  deviations: [contract-*]\n")
+        self.rechaza(base(**{"classes.yml": c}), "el tipo de desvío 'contract-*' no es un slug")
+
+    def test_deviation_repetida_en_la_clase(self):
+        c = CLASES.replace("  description: x\n", "  description: x\n  deviations: [attribution, attribution]\n")
+        self.rechaza(base(**{"classes.yml": c}), "el tipo de desvío attribution está repetido en la clase stale-docs")
+
+    def test_deviation_en_dos_clases(self):
+        c = (CLASES.replace("  description: x\n", "  description: x\n  deviations: [attribution]\n")
+             .replace("  description: y\n", "  description: y\n  deviations: [attribution]\n"))
+        self.rechaza(base(**{"classes.yml": c}), "el tipo de desvío attribution ya está en la clase stale-docs")
+
+    def test_deviations_no_es_lista(self):
+        c = CLASES.replace("  description: x\n", "  description: x\n  deviations: attribution\n")
+        self.rechaza(base(**{"classes.yml": c}), "deviations tiene que ser una lista en línea")
+
+    def test_deviations_fuera_de_una_clase(self):
+        self.rechaza(base(**{"classes.yml": "  deviations: [attribution]\n" + CLASES}), "deviations fuera de una clase")
+
+    def test_deviations_dos_veces_en_la_clase(self):
+        c = CLASES.replace("  description: x\n", "  description: x\n  deviations: [attribution]\n  deviations: [interrupt]\n")
+        self.rechaza(base(**{"classes.yml": c}), "la clase stale-docs tiene dos listas deviations")
+
     def test_el_repo_real_valida(self):
         r = subprocess.run([sys.executable, str(VALIDATE), str(RAIZ)], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
