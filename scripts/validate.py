@@ -120,10 +120,10 @@ def load_classes(path):
     nada más) y un tipo cae en una sola clase como máximo."""
     ids, errors = set(), []
     current, with_list, owner = None, set(), {}
-    entrada = None  # [nombre para los mensajes, línea, tiene descripción]
+    entrada = None  # [nombre para los mensajes, línea, tiene descripción, el id es un slug]
 
     def cerrar():
-        if entrada and not entrada[2]:
+        if entrada and entrada[3] and not entrada[2]:  # como en el kit: si el id no vale, la descripción que falta no es otro error
             errors.append(f"classes.yml:{entrada[1]}: la clase {entrada[0]} no tiene descripción "
                           "(va `  description: <texto>` debajo de `- id:`)")
 
@@ -150,10 +150,10 @@ def load_classes(path):
             if not m:
                 errors.append(f"classes.yml:{n}: la línea de la clase está mal escrita (se espera `- id: <slug>`: un espacio "
                               "después de `:`, en minúsculas, sin comillas ni comentario)")
-                current = f"de la línea {n}"
+                current, valido = f"de la línea {n}", False
             else:
                 cid = m.group(1)
-                current = mostrar(cid)
+                current, valido = mostrar(cid), bool(TIPO.fullmatch(cid))
                 if not TIPO.fullmatch(cid):
                     errors.append(f"classes.yml:{n}: la clase '{mostrar(cid)}' no es un slug que empieza con una letra "
                                   "(minúsculas, números y guiones)")
@@ -166,7 +166,7 @@ def load_classes(path):
                 if cid in ids:
                     errors.append(f"classes.yml:{n}: la clase {current} está repetida")
                 ids.add(cid)
-            entrada = [current, n, False]
+            entrada = [current, n, False, valido]
         elif entrada and DESC_KEY.fullmatch(line):
             if entrada[2]:
                 errors.append(f"classes.yml:{n}: la clase {entrada[0]} tiene dos descripciones: dejá una sola")
