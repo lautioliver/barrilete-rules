@@ -55,8 +55,12 @@ def parse_frontmatter(text):
 
 
 def load_classes(path):
-    """Ids de classes.yml: líneas `- id: <slug>`. Devuelve (ids, errores)."""
+    """Ids de classes.yml: líneas `- id: <slug>`. Devuelve (ids, errores).
+
+    Cada clase puede llevar `  deviations: [<tipo>, …]`: los tipos de desvío que le corresponden (ADR-007 D5 del kit).
+    Un tipo es un slug y cae en una sola clase como máximo."""
     ids, errors = set(), []
+    current, with_list, owner = None, set(), {}
     for n, line in enumerate(path.read_text(encoding="utf-8").split("\n"), start=1):
         m = re.match(r"^- id:\s*(\S+)\s*$", line)
         if m:
@@ -65,6 +69,33 @@ def load_classes(path):
             if m.group(1) in ids:
                 errors.append(f"classes.yml:{n}: la clase {m.group(1)} está repetida")
             ids.add(m.group(1))
+            current = m.group(1)
+            continue
+        d = re.match(r"^\s+deviations:(.*)$", line)
+        if not d:
+            continue
+        if current is None:
+            errors.append(f"classes.yml:{n}: deviations fuera de una clase (va debajo de `- id:`)")
+            continue
+        if current in with_list:
+            errors.append(f"classes.yml:{n}: la clase {current} tiene dos listas deviations")
+            continue
+        with_list.add(current)
+        raw = d.group(1).strip()
+        if not (raw.startswith("[") and raw.endswith("]")):
+            errors.append(f"classes.yml:{n}: deviations tiene que ser una lista en línea ([tipo, …])")
+            continue
+        seen = set()
+        for t in (p.strip() for p in raw[1:-1].split(",") if p.strip()):
+            if not SLUG.match(t):
+                errors.append(f"classes.yml:{n}: el tipo de desvío {t!r} no es un slug")
+            elif t in seen:
+                errors.append(f"classes.yml:{n}: el tipo de desvío {t} está repetido en la clase {current}")
+            elif t in owner:
+                errors.append(f"classes.yml:{n}: el tipo de desvío {t} ya está en la clase {owner[t]} (un tipo va en una sola clase)")
+            else:
+                seen.add(t)
+                owner[t] = current
     if not ids:
         errors.append("classes.yml: no tiene ninguna clase (`- id: <slug>`)")
     return ids, errors
