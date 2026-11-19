@@ -20,6 +20,15 @@ SEVERITY = {"block", "fix", "suggestion"}
 REQUIRED = ["id", "status", "origin", "applies_to", "scope", "classes", "severity"]
 OPTIONAL = {"check", "fail_message", "accepted", "examples"}
 SLUG = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+# La lista `deviations` de classes.yml se lee con el criterio del lector del kit (scripts/agents/check-docs.py), que recibe
+# el archivo tal cual por `sync-rules`: lo que pasa acá tiene que pasar allá.
+# Un tipo de desvío es un slug que empieza con una letra y no es una palabra que YAML 1.1 lee como booleano o null.
+TIPO = re.compile(r"[a-z][a-z0-9]*(-[a-z0-9]+)*")
+YAML11 = {"y", "n", "yes", "no", "true", "false", "on", "off", "null"}
+# Una línea que empieza con la clave, bien o mal escrita: otra indentación, mayúsculas, comillas, `- ` delante, sin `:`.
+DEV_KEY = re.compile(r"\s*(?:-\s*)?[\"']?deviations", re.I)
+# La única forma válida. Sin corchetes ni `#` dentro de la lista; después de `]`, solo espacios.
+DEV_LINE = re.compile(r"  deviations: \[([^\[\]#]*)\] *")
 # Fuera de rules/ y classes.yml solo entran la documentación y las herramientas del validador.
 ALLOWED_DIRS = ("rules/", "docs/", "scripts/", "tests/", ".github/")
 ALLOWED_ROOT = {"classes.yml", ".gitignore", "LICENSE"}
@@ -54,9 +63,19 @@ def parse_frontmatter(text):
     return None, "el frontmatter no cierra (---)"
 
 
+def mostrar(texto, tope=40):
+    """Un texto del archivo para un mensaje: cortado a `tope` y sin caracteres de control ni invisibles (como los escribe repr)."""
+    return repr(texto if len(texto) <= tope else texto[:tope] + "…")[1:-1]
+
+
 def load_classes(path):
-    """Ids de classes.yml: líneas `- id: <slug>`. Devuelve (ids, errores)."""
+    """Ids de classes.yml: líneas `- id: <slug>`. Devuelve (ids, errores).
+
+    Cada clase puede llevar `  deviations: [<tipo>, …]`: los tipos de desvío que le corresponden (ADR-007 D5 del kit).
+    La línea se escribe exactamente así (dos espacios de indentación, un espacio después de `:`, lista en línea y nada más)
+    y un tipo cae en una sola clase como máximo."""
     ids, errors = set(), []
+    current, with_list, owner = None, set(), {}
     for n, line in enumerate(path.read_text(encoding="utf-8").split("\n"), start=1):
         m = re.match(r"^- id:\s*(\S+)\s*$", line)
         if m:
@@ -65,6 +84,46 @@ def load_classes(path):
             if m.group(1) in ids:
                 errors.append(f"classes.yml:{n}: la clase {m.group(1)} está repetida")
             ids.add(m.group(1))
+            current = m.group(1)
+            continue
+        # El lector del kit corta las líneas donde corta str.splitlines() (FF, U+2028…), no solo en el salto de línea: una
+        # clave detrás de uno de esos cortes es para él una línea aparte, así que acá también cuenta.
+        if not any(DEV_KEY.match(parte) for parte in line.splitlines()):
+            continue
+        if not line.startswith("  deviations:"):
+            errors.append(f"classes.yml:{n}: línea inesperada con la clave deviations (se espera exactamente "
+                          "`  deviations: [<tipo>, …]`: dos espacios de indentación, en minúsculas, sin comillas y en su propia línea)")
+            continue
+        if current is None:
+            errors.append(f"classes.yml:{n}: deviations fuera de una clase (va debajo de `- id:`)")
+            continue
+        if current in with_list:
+            errors.append(f"classes.yml:{n}: la clase {current} tiene dos listas deviations")
+            continue
+        with_list.add(current)
+        d = DEV_LINE.fullmatch(line)
+        if not d:
+            errors.append(f"classes.yml:{n}: deviations tiene que ser una lista en línea (se espera `  deviations: [<tipo>, …]`: "
+                          "un solo espacio después de `:`, sin otro corchete ni comentario, y nada después de `]`)")
+            continue
+        seen = set()
+        dentro = d.group(1).strip(" ")  # `[]` y `[ ]` son una lista sin tipos
+        for t in [p.strip(" ") for p in dentro.split(",")] if dentro else []:
+            if not t:
+                errors.append(f"classes.yml:{n}: deviations de la clase {current} tiene un elemento vacío (una coma de más)")
+            elif not TIPO.fullmatch(t):
+                errors.append(f"classes.yml:{n}: el tipo de desvío '{mostrar(t)}' no es un slug que empieza con una letra "
+                              "(minúsculas, números y guiones)")
+            elif t in YAML11:
+                errors.append(f"classes.yml:{n}: el tipo de desvío {t} es un booleano o null en YAML 1.1 (un parser YAML no lo "
+                              "lee como texto): elegí otro tipo")
+            elif t in seen:
+                errors.append(f"classes.yml:{n}: el tipo de desvío {mostrar(t)} está repetido en la clase {current}")
+            elif t in owner:
+                errors.append(f"classes.yml:{n}: el tipo de desvío {mostrar(t)} ya está en la clase {owner[t]} (un tipo va en una sola clase)")
+            else:
+                owner[t] = current
+            seen.add(t)
     if not ids:
         errors.append("classes.yml: no tiene ninguna clase (`- id: <slug>`)")
     return ids, errors
