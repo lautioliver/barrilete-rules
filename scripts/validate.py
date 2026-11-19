@@ -34,8 +34,9 @@ ID_KEY = re.compile(r"\s*-\s*id\s*:", re.I)
 # Una línea de descripción, bien o mal escrita, y la única forma válida: un escalar plano que YAML lee como el mismo texto.
 DESC_KEY = re.compile(r"  description:( .*)?")
 DESC = re.compile(r"  description: \w.*")
-# Cortes de línea que no son `\n`: str.splitlines() corta en ellos y el kit lee dos líneas.
-CORTE = re.compile(r"[\r\x0b\x0c\x1c-\x1e\x85\u2028\u2029]")
+# Cortes de línea que no son `\n`: str.splitlines() corta en ellos y el kit lee dos líneas. `\r` no está porque nunca llega:
+# read_text() y el open() del kit leen con saltos universales y lo convierten en `\n`.
+CORTE = re.compile(r"[\x0b\x0c\x1c-\x1e\x85\u2028\u2029]")
 # Fuera de rules/ y classes.yml solo entran la documentación y las herramientas del validador.
 ALLOWED_DIRS = ("rules/", "docs/", "scripts/", "tests/", ".github/")
 ALLOWED_ROOT = {"classes.yml", ".gitignore", "LICENSE"}
