@@ -200,6 +200,13 @@ class Validador(unittest.TestCase):
             with self.subTest(c):
                 self.rechaza_una(base(**{"classes.yml": c}), "la clase foo no tiene descripción")
 
+    def test_clase_mal_escrita_sin_descripcion_da_un_solo_error(self):
+        # Como en el kit: si el id no vale, la descripción que falta no es un segundo error.
+        for linea, texto in (("- id: 1st", "no es un slug que empieza con una letra"), ("- id:foo", self.ID_MAL),
+                             ("   - id: foo", self.ID_MAL), ("- id: " + "a-" * 50, "no es un slug que empieza con una letra")):
+            with self.subTest(linea):
+                self.rechaza_una(base(**{"classes.yml": CLASES + linea + "\n"}), f"classes.yml:5: {texto}")
+
     def test_clase_con_dos_descripciones(self):
         self.rechaza_una(dev("  description: z"), "classes.yml:3: la clase stale-docs tiene dos descripciones")
 
