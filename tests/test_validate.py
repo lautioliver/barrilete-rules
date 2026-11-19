@@ -202,6 +202,12 @@ class Validador(unittest.TestCase):
             with self.subTest(t):
                 self.rechaza_una(dev(f"  deviations: [{t}]"), f"el tipo de desvío '{t}' {self.NO_SLUG}")
 
+    def test_deviation_empieza_con_letra_pero_no_es_kebab(self):
+        # El resto del tipo tampoco puede tener mayúsculas, guiones de más, otros signos ni comillas: el kit lo rechaza.
+        for t in ("attriBution", "Attribution", "attribution-", "attr--x", "-attr", "attr_x", "attr.x", '"attribution"', "'attribution'"):
+            with self.subTest(t):
+                self.rechaza_una(dev(f"  deviations: [{t}]"), f"el tipo de desvío '{t}' {self.NO_SLUG}")
+
     def test_deviation_palabra_de_yaml(self):
         for t in ("y", "n", "yes", "no", "true", "false", "on", "off", "null"):
             with self.subTest(t):
