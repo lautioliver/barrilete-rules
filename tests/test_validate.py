@@ -162,6 +162,103 @@ class Validador(unittest.TestCase):
     def test_clase_repetida(self):
         self.rechaza(base(**{"classes.yml": CLASES + "- id: stale-docs\n"}), "está repetida")
 
+    # El resto de classes.yml también se lee con el criterio del lector del kit (#9): `sync-rules` le copia el archivo tal cual,
+    # así que una línea que pasa acá y el kit rechaza rompe su CI `docs`.
+    INESPERADA_CLASES = "línea inesperada (se espera `- id: <slug>`, `  description: <texto>` o `  deviations: [<tipo>, …]`)"
+    ID_MAL = "la línea de la clase está mal escrita (se espera `- id: <slug>`"
+
+    def test_clase_que_no_empieza_con_letra(self):
+        for cid in ("1st", "9", "-foo"):
+            with self.subTest(cid):
+                self.rechaza_una(base(**{"classes.yml": CLASES + f"- id: {cid}\n  description: z\n"}),
+                                 f"classes.yml:5: la clase '{cid}' no es un slug que empieza con una letra")
+
+    def test_clase_que_no_es_slug(self):
+        for cid in ("Foo", "foo_bar", "foo-", "foo--bar", "foo.bar"):
+            with self.subTest(cid):
+                self.rechaza_una(base(**{"classes.yml": CLASES + f"- id: {cid}\n  description: z\n"}),
+                                 f"classes.yml:5: la clase '{cid}' no es un slug que empieza con una letra")
+
+    def test_clase_mal_escrita(self):
+        for linea in ("- id:  foo", "- id:foo", "- id: foo # nota", "- id: 'foo'", '- id: "foo"', "- ID: foo", "-  id: foo",
+                      " - id: foo", "- id : foo", "- id: foo bar", "- id:"):
+            with self.subTest(linea):
+                self.rechaza_una(base(**{"classes.yml": CLASES + linea + "\n  description: z\n"}), f"classes.yml:5: {self.ID_MAL}")
+
+    def test_clase_palabra_de_yaml(self):
+        for cid in ("y", "n", "yes", "no", "true", "false", "on", "off", "null"):
+            with self.subTest(cid):
+                self.rechaza_una(base(**{"classes.yml": CLASES + f"- id: {cid}\n  description: z\n"}),
+                                 f"classes.yml:5: la clase {cid} es un booleano o null en YAML 1.1")
+
+    def test_clase_other_reservada(self):
+        self.rechaza_una(base(**{"classes.yml": CLASES + "- id: other\n  description: z\n"}),
+                         "classes.yml:5: la clase other está reservada")
+
+    def test_clase_sin_descripcion(self):
+        for c in (CLASES + "- id: foo\n", "- id: foo\n" + CLASES, CLASES + "- id: foo\n  deviations: [attribution]\n"):
+            with self.subTest(c):
+                self.rechaza_una(base(**{"classes.yml": c}), "la clase foo no tiene descripción")
+
+    def test_clase_mal_escrita_sin_descripcion_da_un_solo_error(self):
+        # Como en el kit: si el id no vale, la descripción que falta no es un segundo error.
+        for linea, texto in (("- id: 1st", "la clase '1st' no es un slug que empieza con una letra"), ("- id:foo", self.ID_MAL),
+                             ("   - id: foo", self.ID_MAL), ("- id: " + "a-" * 50, "la clase '" + "a-" * 20 + "…' no es un slug")):
+            with self.subTest(linea):
+                self.rechaza_una(base(**{"classes.yml": CLASES + linea + "\n"}), f"classes.yml:5: {texto}")
+
+    def test_clase_con_dos_descripciones(self):
+        self.rechaza_una(dev("  description: z"), "classes.yml:3: la clase stale-docs tiene dos descripciones")
+
+    def test_descripcion_que_no_es_texto_plano(self):
+        for desc in ('"x"', "'x'", "a: b", "a:", "x # nota", "x\t# nota", "[x]", "{x}", "- x", "> x", "| x", "&x", "*x", "!x",
+                     "%x", "@x", "`x", "", " x"):
+            with self.subTest(desc):
+                c = CLASES.replace("  description: x\n", f"  description: {desc}\n")
+                self.rechaza_una(base(**{"classes.yml": c}), "classes.yml:2: la descripción de la clase stale-docs no es texto plano")
+
+    def test_descripcion_fuera_de_una_clase(self):
+        self.rechaza_una(base(**{"classes.yml": "  description: z\n" + CLASES}), f"classes.yml:1: {self.INESPERADA_CLASES}")
+
+    def test_linea_inesperada(self):
+        for linea in ("  note: z", "  deviation: [attribution]", "    - attribution", "hola", "   description: z", " description: z",
+                      "  Description: z", "  description:z", "\tdescription: z", "id: foo", "---", "..."):
+            with self.subTest(linea):
+                self.rechaza_una(dev(linea), f"classes.yml:3: {self.INESPERADA_CLASES}")
+
+    def test_lista_deviations_en_bloque(self):
+        self.rechaza_una(dev("  deviations: []\n    - attribution"), f"classes.yml:4: {self.INESPERADA_CLASES}")
+
+    def test_corte_de_linea_que_no_es_salto(self):
+        # El kit corta donde corta str.splitlines(): lo que queda detrás de un FF o un U+2028 es para él otra línea.
+        for corte in ("\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", " ", " "):
+            with self.subTest(corte):
+                c = CLASES.replace("  description: x\n", f"  description: x{corte}- id: foo\n")
+                self.rechaza_una(base(**{"classes.yml": c}), "classes.yml:2: la línea tiene un corte que no es un salto de línea")
+
+    def test_mensajes_de_clases_sin_caracteres_de_control(self):
+        rc, out = correr(base(**{"classes.yml": CLASES + "- id: \x1b[31mfoo\x07\n  description: z\n"}))
+        self.assertEqual(rc, 1, out)
+        self.assertNotIn("\x1b", out)
+        self.assertNotIn("\x07", out)
+        rc, out = correr(base(**{"classes.yml": CLASES + "- id: " + "a" * 5000 + "_\n  description: z\n"}))
+        self.assertEqual(rc, 1, out)
+        self.assertLess(max(len(l) for l in out.split("\n")), 300)
+
+    def test_formas_validas_de_classes_pasan(self):
+        casos = {
+            "comentarios y líneas vacías": "# nota\n\n" + CLASES.replace("- id: uncovered-case\n", "  # otra nota\n\n- id: uncovered-case\n"),
+            "espacios al final": CLASES.replace("- id: stale-docs\n", "- id: stale-docs  \n").replace("  description: x\n", "  description: x \t\n"),
+            "descripción con signos": CLASES.replace("  description: x\n", "  description: it says `x`, (y), a:b, c#d and 100% — ok\n"),
+            "descripción que empieza con número o no ASCII": CLASES.replace("  description: x\n", "  description: 2 docs\n")
+                                                              .replace("  description: y\n", "  description: ñandú\n"),
+            "BOM": "﻿" + CLASES,
+            "sin salto final": CLASES.rstrip("\n"),
+        }
+        for nombre, c in casos.items():
+            with self.subTest(nombre):
+                self.pasa(base(**{"classes.yml": c}))
+
     # La lista `deviations` de una clase (ADR-007 D5 del kit): los tipos de desvío que le corresponden.
     def test_deviations_valido_pasa(self):
         c = CLASES.replace("  description: x\n", "  description: x\n  deviations: [attribution, user-correction]\n")
@@ -288,9 +385,11 @@ class Validador(unittest.TestCase):
         self.pasa(files)
 
     def test_deviations_en_un_comentario_o_en_una_descripcion_no_es_una_lista(self):
-        for linea in ("  # deviations: [1st-try]", "# deviations:[1st-try]", "  description: counts deviations:[1st-try] twice"):
+        for linea in ("  # deviations: [1st-try]", "# deviations:[1st-try]"):
             with self.subTest(linea):
                 self.pasa(dev(linea, despues_de="- id: stale-docs\n"))
+        # Una sola descripción por clase (#9): la que nombra deviations reemplaza a la de la clase.
+        self.pasa(base(**{"classes.yml": CLASES.replace("  description: x\n", "  description: counts deviations:[1st-try] twice\n")}))
 
     def test_deviation_larguisima_se_corta_en_el_mensaje(self):
         largo = "a" * 5000
